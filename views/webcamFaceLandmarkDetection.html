@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="face-api.js"></script>
+  <script src="js/commons.js"></script>
+  <script src="js/faceDetectionControls.js"></script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.css">
+  <script type="text/javascript" src="https://code.jquery.com/jquery-2.1.1.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
+</head>
+<body>
+  <div id="navbar"></div>
+  
+  <style>
+    .waves-effect{
+      z-index:1000;
+    }
+    #snap{
+      position:relative;
+      z-index:1000;
+    }
+  </style>
+
+  <div class="center-content page-container">
+    <div class="query">
+      <!-- tiny_face_detector_controls -->
+      <p> Query Image: </p>
+  
+      <div class="imageSet">
+        
+      </div>
+  
+      
+  
+        <!-- image_selection_control -->
+        <div class="row">
+          <label>Upload Image:</label>
+          <div>
+            <input id="queryImgUploadInput" type="file" class="bold" onchange="uploadQueryImage()" accept=".jpg, .jpeg, .png" multiple>
+          </div>
+        </div>
+        
+        <button
+          class="waves-effect waves-light btn"
+          onclick="loadModel()"
+        >
+          Save Models
+        </button>
+        <!-- image_selection_control -->
+    </div>
+
+    <div class="progress" id="loader">
+      <div class="indeterminate"></div>
+    </div>
+    <div style="position: relative" class="margin">
+      <video onloadedmetadata="onPlay(this)" id="inputVideo" autoplay muted playsinline></video>
+      <canvas id="overlay" />
+
+      
+    </div>
+    <div>
+      <button id="snap" onclick="snap()">Snap Photo</button>
+      <canvas id="canvas" width="800"></canvas>
+      <div style="position: relative" class="margin">
+        <img id="refImg" src="" style="max-width: 800px;" />
+        <canvas id="refImgOverlay" class="overlay"/>
+      </div>
+    </div>
+
+    <div class="row side-by-side">
+
+      <!-- face_detector_selection_control -->
+      <div id="face_detector_selection_control" class="row input-field" style="margin-right: 20px;">
+        <select id="selectFaceDetector">
+          <option value="ssd_mobilenetv1">SSD Mobilenet V1</option>
+          <option value="tiny_face_detector">Tiny Face Detector</option>
+        </select>
+        <label>Select Face Detector</label>
+      </div>
+      <!-- face_detector_selection_control -->
+
+      <!-- check boxes -->
+      <div class="row" style="width: 220px;">
+        <input type="checkbox" id="hideBoundingBoxesCheckbox" onchange="onChangeHideBoundingBoxes(event)" />
+        <label for="hideBoundingBoxesCheckbox">Hide Bounding Boxes</label>
+      </div>
+      <!-- check boxes -->
+
+      <!-- fps_meter -->
+      <div id="fps_meter" class="row side-by-side">
+        <div>
+          <label for="time">Time:</label>
+          <input disabled value="-" id="time" type="text" class="bold">
+          <label for="fps">Estimated Fps:</label>
+          <input disabled value="-" id="fps" type="text" class="bold">
+        </div>
+      </div>
+      <!-- fps_meter -->
+
+    </div>
+
+
+    <!-- ssd_mobilenetv1_controls -->
+    <span id="ssd_mobilenetv1_controls">
+      <div class="row side-by-side">
+        <div class="row">
+          <label for="minConfidence">Min Confidence:</label>
+          <input disabled value="0.5" id="minConfidence" type="text" class="bold">
+        </div>
+        <button
+          class="waves-effect waves-light btn"
+          onclick="onDecreaseMinConfidence()"
+        >
+          <i class="material-icons left">-</i>
+        </button>
+        <button
+          class="waves-effect waves-light btn"
+          onclick="onIncreaseMinConfidence()"
+        >
+          <i class="material-icons left">+</i>
+        </button>
+      </div>
+    </span>
+    <!-- ssd_mobilenetv1_controls -->
+
+    <!-- tiny_face_detector_controls -->
+    <span id="tiny_face_detector_controls">
+      <div class="row side-by-side">
+        <div class="row input-field" style="margin-right: 20px;">
+          <select id="inputSize">
+            <option value="" disabled selected>Input Size:</option>
+            <option value="128">128 x 128</option>
+            <option value="160">160 x 160</option>
+            <option value="224">224 x 224</option>
+            <option value="320">320 x 320</option>
+            <option value="416">416 x 416</option>
+            <option value="512">512 x 512</option>
+            <option value="608">608 x 608</option>
+          </select>
+          <label>Input Size</label>
+        </div>
+        <div class="row">
+          <label for="scoreThreshold">Score Threshold:</label>
+          <input disabled value="0.5" id="scoreThreshold" type="text" class="bold">
+        </div>
+        <button
+          class="waves-effect waves-light btn"
+          onclick="onDecreaseScoreThreshold()"
+        >
+          <i class="material-icons left">-</i>
+        </button>
+        <button
+          class="waves-effect waves-light btn"
+          onclick="onIncreaseScoreThreshold()"
+        >
+          <i class="material-icons left">+</i>
+        </button>
+      </div>
+    </span>
+    
+    
+
+    </div>
+  </body>
+
+  <script>
+    var video=document.querySelector('video');
+    var canvas1=document.querySelector('#canvas');
+    var context=canvas.getContext('2d');
+    var w,h,ratio;
+  
+    //add loadedmetadata which will helps to identify video attributes
+  
+    video.addEventListener('loadedmetadata', function() {
+      ratio = video.videoWidth/video.videoHeight;
+      w = video.videoWidth;
+      h = parseInt(w/ratio,10);
+      canvas1.width = w;
+      canvas1.height = h;
+    },false);
+  
+    function snap() {
+      $('#canvas').show();
+      context.fillRect(0,0,w,h);
+      context.drawImage(video,0,0,w,h);
+      var dataURI = canvas1.toDataURL('image/jpeg');
+      $('#refImg').get(0).src = dataURI;
+      updateReferenceImageResults()
+      $('#canvas').hide();
+    }
+    </script>
+
+  <script>
+    let forwardTimes = []
+    let withBoxes = true
+    var faceMatcher = null
+    var indexQuery = 0;
+    var face=[]
+
+
+    function onChangeHideBoundingBoxes(e) {
+      withBoxes = !$(e.target).prop('checked')
+    }
+
+    function updateTimeStats(timeInMs) {
+      forwardTimes = [timeInMs].concat(forwardTimes).slice(0, 30)
+      const avgTimeInMs = forwardTimes.reduce((total, t) => total + t) / forwardTimes.length
+      $('#time').val(`${Math.round(avgTimeInMs)} ms`)
+      $('#fps').val(`${faceapi.utils.round(1000 / avgTimeInMs)}`)
+    }
+
+    async function postLoadModels( i){
+      const inputImgEl = $('#queryImg'+i).get(0)
+      const canvas = $('#queryImgOverlay'+i).get(0)
+      const results = await faceapi
+        .detectAllFaces(inputImgEl, getFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors()
+        setTimeout(function(){
+          faceapi.matchDimensions(canvas, inputImgEl)
+          console.log(i);
+          try{
+            console.log(results);
+            face[i]=(results[0].descriptor);
+          }catch(e){
+            
+          }
+          faceapi.resizeResults(results, inputImgEl)
+        },(100))
+        
+    }
+     function loadModel(){
+       face =[];
+      $('.imageSet .margin').each(function(i,v){
+        console.log(i)
+        // console.log(v)
+        face.push(i);
+        postLoadModels(i)
+        
+      })
+      setTimeout(function(){
+        console.log(face);
+        faceMatcher = new faceapi.FaceMatcher(face);
+        console.log(faceMatcher);
+        alert("sukses insert model")
+      },(indexQuery*300))
+      
+    }
+
+    async function updateReferenceImageResults() {
+      
+      const inputImgEl = $('#refImg').get(0)
+      console.log(inputImgEl);
+      const canvas = $('#refImgOverlay').get(0)
+      console.log(canvas);
+      try{
+        const options = getFaceDetectorOptions()
+          // const fullFaceDescriptions =  await faceapi.detectAllFaces(inputImgEl, options).withFaceLandmarks().withFaceDescriptor()
+          const results = await faceapi
+          .detectAllFaces(inputImgEl, getFaceDetectorOptions())
+          .withFaceLandmarks()
+          .withFaceDescriptors()
+
+         console.log(results);
+
+        if (!results.length) {
+          return
+        }
+
+        // create FaceMatcher with automatically assigned labels
+        // from the detection results for the reference image
+        console.log(faceMatcher);
+
+        faceapi.matchDimensions(canvas, inputImgEl)
+        // resize detection and landmarks in case displayed image is smaller than
+        // original size
+        const resizedResults = faceapi.resizeResults(results, inputImgEl)
+        // draw boxes with the corresponding label as text
+        const labels = faceMatcher.labeledDescriptors
+          .map(ld => ld.label)
+        resizedResults.forEach(({ detection, descriptor }) => {
+          const label = faceMatcher.findBestMatch(descriptor).toString()
+          const options = { label }
+          console.log(label);
+          
+           
+          const drawBox = new faceapi.draw.DrawBox(detection.box, options)
+          drawBox.draw(canvas)
+
+
+          var pilihantext =label.split(" ")[1];
+          $('.imageSet .margin').each(function(i,v){
+            $(this).find('img').hide();
+          })
+          $('#queryImg'+(Number(pilihantext)-1)).show();
+        })
+      }catch(e){
+        console.log(e)
+      }
+      
+    }
+    
+
+    async function uploadQueryImage(e) {
+      console.log($('#queryImgUploadInput').get(0).files)
+      var arr = $('#queryImgUploadInput').get(0).files;
+      for (let index = 0; index < arr.length; index++) {
+        const element = arr[index];
+        const imgFile = element;
+        const img = await faceapi.bufferToImage(imgFile)
+        $(".imageSet").append(
+          '<div style="position: relative" class="margin">'+
+          '<img id="queryImg'+index+'" src="" style="max-width: 800px;" />'+
+          '<canvas id="queryImgOverlay'+index+'" class="overlay"></canvas>'+
+          '</div>'
+        )
+        
+        $('#queryImg'+index).get(0).src = img.src
+        indexQuery= index;
+      }
+      
+    }
+
+    
+
+    async function updateQueryImageResults() {
+      // if (!faceMatcher) {
+      //   return
+      // }
+
+      const inputImgEl = $('#queryImg').get(0)
+      const canvas = $('#queryImgOverlay').get(0)
+
+
+      console.log(inputImgEl);
+
+      console.log(canvas);
+      const options = getFaceDetectorOptions()
+
+      // const results =  await faceapi.detectAllFaces(inputImgEl, options).withFaceLandmarks().withFaceDescriptor()
+      const results = await faceapi
+        .detectAllFaces(inputImgEl, getFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptors()
+
+      faceapi.matchDimensions(canvas, inputImgEl)
+      // resize detection and landmarks in case displayed image is smaller than
+      // original size
+      const resizedResults = faceapi.resizeResults(results, inputImgEl)
+      console.log(resizedResults);
+      // resizedResults.forEach(({ detection, descriptor }) => {
+      //   const label = faceMatcher.findBestMatch(descriptor).toString()
+      //   const options = { label }
+      //   const drawBox = new faceapi.draw.DrawBox(detection.box, options)
+      //   drawBox.draw(canvas)
+      // })
+    }
+
+
+    async function onPlay() {
+      const videoEl = $('#inputVideo').get(0)
+
+      if(videoEl.paused || videoEl.ended || !isFaceDetectionModelLoaded())
+        return setTimeout(() => onPlay())
+
+
+      const options = getFaceDetectorOptions()
+
+      const ts = Date.now()
+
+      const result = await faceapi.detectSingleFace(videoEl, options).withFaceLandmarks()
+      // const result = await faceapi.detectSingleFace(videoEl, options).withFaceLandmarks()
+
+      // const result = await faceapi
+      //   .detectSingleFace(videoEl, getFaceDetectorOptions())
+      //   .withFaceLandmarks()
+      //   .withFaceDescriptors()
+
+      //faceMatcher = new faceapi.FaceMatcher(result)
+
+
+      updateTimeStats(Date.now() - ts)
+
+      if (result) {
+        // console.log("result")
+        const canvas = $('#overlay').get(0)
+        const dims = faceapi.matchDimensions(canvas, videoEl, true)
+        const resizedResult = faceapi.resizeResults(result, dims)
+
+        if (withBoxes) {
+          faceapi.draw.drawDetections(canvas, resizedResult)
+        }
+        faceapi.draw.drawFaceLandmarks(canvas, resizedResult)
+      }
+
+      setTimeout(() => onPlay())
+
+      
+    }
+
+    async function run() {
+      // load face detection and face landmark models
+      await changeFaceDetector(TINY_FACE_DETECTOR)
+      await faceapi.loadFaceLandmarkModel('/')
+      await faceapi.loadFaceRecognitionModel('/')
+      changeInputSize(224)
+
+      // try to access users webcam and stream the images
+      // to the video element
+      const stream = await navigator.mediaDevices.getUserMedia({ video: {} })
+      const videoEl = $('#inputVideo').get(0)
+      videoEl.srcObject = stream
+    }
+
+    async function updateResults() {
+      await updateReferenceImageResults()
+      await updateQueryImageResults()
+    }
+
+    $(document).ready(function() {
+      renderNavBar('#navbar', 'webcam_face_landmark_detection')
+      initFaceDetectionControls()
+      run()
+    })
+  </script>
+</body>
+</html>
